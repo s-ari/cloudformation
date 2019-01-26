@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Auto Scale Launch Config, Auto Scale Group, Security Group, IAM Role
+
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: Prefix
+  ImageId:
+    Type: "String"
+    Default: ImageId
+  KeyName:
+    Type: "String"
+    Default: KeyName
+  AllowSsh:
+    Type: "String"
+    Default: AllowSsh
+  AllowHttp:
+    Type: "String"
+    Default: AllowHttp
+  AutoScaleInstanceType:
+    Type: "String"
+    Default: AutoScaleInstanceType
+
+Resources:
+  # Security group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Limits security group ingress and egress traffic
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: !Ref AllowSsh
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: !Ref AllowHttp
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      VpcId: !ImportValue Vpc
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, SecurityGroup ] ]
+
+  # Role
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: "s3:List*"
+          Resource: "*"
+      Roles:
+      - !Ref Role
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - !Ref Role
+
+  # Auto scaling launch config
+  LaunchConfig:
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Properties:
+      AssociatePublicIpAddress: true
+      KeyName: !Ref KeyName
+      ImageId: !Ref ImageId
+      SecurityGroups:
+      - !Ref SecurityGroup
+      InstanceType: !Ref AutoScaleInstanceType
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: 8
+          VolumeType: gp2
+          DeleteOnTermination: true
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+           #!/bin/bash -xe
+           apt-get -y update
+           apt-get -y install apache2
+           curl -s http://169.254.169.254/latest/meta-data/instance-id -o /var/www/html/instanceid.html
+
+  # Auto scaling group
+  ServerGroupMq: 
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties: 
+      VPCZoneIdentifier:
+      - !ImportValue PublicSubnet1a
+      - !ImportValue PublicSubnet1c
+      LaunchConfigurationName: !Ref LaunchConfig 
+      MinSize: "1"
+      MaxSize: "1"
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, instance ] ]
+        PropagateAtLaunch: true

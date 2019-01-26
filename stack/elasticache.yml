@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  ElastiCache(Redis), Elasticache Security Group
+
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: Prefix
+  ElastiCacheInstanceType:
+    Type: "String"
+    Default: ElastiCacheInstanceType
+  VpcCidrBlock:
+    Type: "String"
+    Default: VpcCidrBlock
+
+Resources:
+  # Elasticache Security group
+  ElasticacheSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      GroupName: !Join [ -, [ !Ref Prefix, ElasticacheSecurityGroup ] ]
+      GroupDescription: Security Group for Elasticache Redis
+      SecurityGroupIngress:
+        - 
+          IpProtocol: tcp
+          CidrIp: !Ref VpcCidrBlock
+          FromPort: 6379
+          ToPort: 6379
+      Tags:
+        - Key: Name
+          Value: !Join [ -, [ !Ref Prefix, ElasticacheSecurityGroup ] ]
+      VpcId: !ImportValue Vpc
+
+  # Elasticache subnet group
+  ElastiCacheSubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties:
+      CacheSubnetGroupName: !Join [ -, [ !Ref Prefix, Elasticache-SubnetGroup ] ]
+      Description: "Subnet Group for ElastiCashe"
+      SubnetIds:
+        - !ImportValue PrivateSubnet1a
+        - !ImportValue PrivateSubnet1c
+
+  # Elasticache cluster
+  ElastiCache:
+    Type: "AWS::ElastiCache::ReplicationGroup"
+    Properties:
+      AutomaticFailoverEnabled: true
+      AutoMinorVersionUpgrade: true
+      CacheNodeType: !Ref ElastiCacheInstanceType
+      CacheParameterGroupName: default.redis2.8
+      CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+      Engine: redis
+      EngineVersion: 2.8.24
+      NumCacheClusters: 2
+      ReplicationGroupDescription: 'Elasticache Redis'
+      ReplicationGroupId: !Join [ -, [ !Ref Prefix, Redis-Cluster ] ]
+      SecurityGroupIds:
+        - !Ref ElasticacheSecurityGroup
+

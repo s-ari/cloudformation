@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Create AWS resources VPC, ElastCache(Redis)
+
+#  Edit parameters. Need instance type cache.m3.medium for Multi AZ. 
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: ""
+  InstanceType:
+    Type: "String"
+    Default: ""
+  VpcCidrBlock:
+    Type: "String"
+    Default: ""
+  PublicSubnetCidrBlock1a:
+    Type: "String"
+    Default: ""
+  PublicSubnetCidrBlock1c:
+    Type: "String"
+    Default: ""
+  PrivateSubnetCidrBlock1a:
+    Type: "String"
+    Default: ""
+  PrivateSubnetCidrBlock1c:
+    Type: "String"
+    Default: ""
+
+Resources:
+  # VPC
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: VpcCidrBlock
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, VPC ] ]
+
+  # Public Subnet AZ1a
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock:
+        Ref: PublicSubnetCidrBlock1a
+      AvailabilityZone: 
+        Fn::Select:
+        - 0
+        - Fn::GetAZs:
+            Ref: "AWS::Region"
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, PublicSubnet1a ] ]
+
+  # Public Subnet AZ1c
+  PublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock:
+        Ref: PublicSubnetCidrBlock1c
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs:
+            Ref: "AWS::Region"
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, PublicSubnet1c ] ]
+
+  # Private Subnet AZ1a
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock:
+        Ref: PrivateSubnetCidrBlock1a
+      AvailabilityZone: 
+        Fn::Select:
+        - 0
+        - Fn::GetAZs:
+            Ref: "AWS::Region"
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, PrivateSubnet1a ] ]
+
+  # Private Subnet AZ1c
+  PrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock:
+        Ref: PrivateSubnetCidrBlock1c
+      AvailabilityZone: 
+        Fn::Select:
+        - 1 
+        - Fn::GetAZs:
+            Ref: "AWS::Region"
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, PrivateSubnet1c ] ]
+
+  # Gateway
+  Gateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, Gateway ] ]
+        #Value: ArimaGateway
+
+  # Attach gateway
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: Vpc
+      InternetGatewayId:
+        Ref: Gateway
+
+  # Route table
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, RouteTable ] ]
+
+  # Route
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn: Gateway
+    Properties:
+      RouteTableId:
+        Ref: RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: Gateway
+
+  # Subnet AZ1a route table association
+  PublicSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnet1a
+      RouteTableId:
+        Ref: RouteTable
+
+  # Subnet AZ1c route table association
+  PublicSubnet1cRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnet1c
+      RouteTableId:
+        Ref: RouteTable
+
+  # Security group
+  ElasticacheSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Elasticache Security Group"
+      SecurityGroupIngress:
+        -
+          IpProtocol: "tcp"
+          FromPort: "6379"
+          ToPort: "6379"
+          SourceSecurityGroupName:
+            Fn::Join: [ -, [ Ref: Prefix, ElasticacheSecurityGroup ] ]
+
+  # Elasticache Security group
+  ElasticacheSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      GroupName:
+        Fn::Join: [ -, [ Ref: Prefix, ElasticacheSecurityGroup ] ]
+      GroupDescription: Security Group for Elasticache Redis
+      SecurityGroupIngress:
+        - 
+          IpProtocol: tcp
+          CidrIp:
+            Ref: VpcCidrBlock
+          FromPort: 6379
+          ToPort: 6379
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join: [ -, [ Ref: Prefix, ElasticacheSecurityGroup ] ]
+      VpcId: !Ref Vpc
+
+  # Elasticache subnet group
+  ElastiCacheSubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties:
+      CacheSubnetGroupName:
+        Fn::Join: [ -, [ Ref: Prefix, ElasticacheSubnetGroup ] ]
+      Description: "Subnet Group for ElastiCashe"
+      SubnetIds:
+        - Ref: PrivateSubnet1a
+        - Ref: PrivateSubnet1c
+
+  # Elasticache cluster
+  ElastiCache:
+    Type: "AWS::ElastiCache::ReplicationGroup"
+    Properties:
+      AutomaticFailoverEnabled: true
+      AutoMinorVersionUpgrade: true
+      CacheNodeType:
+        Ref: InstanceType
+      CacheParameterGroupName: default.redis2.8
+      CacheSubnetGroupName:
+        Ref: ElastiCacheSubnetGroup
+      Engine: redis
+      EngineVersion: 2.8.24
+      NumCacheClusters: 2
+      ReplicationGroupDescription: 'Elasticache Redis'
+      ReplicationGroupId:
+        Fn::Join: [ -, [ Ref: Prefix, Redis-Cluster ] ]
+      SecurityGroupIds:
+        - Ref: ElasticacheSecurityGroup
+

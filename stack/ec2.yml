@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  EC2, Security Group, IAM Role
+
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: Prefix
+  ImageId:
+    Type: "String"
+    Default: ImageId
+  KeyName:
+    Type: "String"
+    Default: KeyName
+  AllowSsh:
+    Type: "String"
+    Default: AllowSsh
+  Ec2InstanceName:
+    Type: "String"
+    Default: Ec2InstanceName
+  Ec2InstanceType:
+    Type: "String"
+    Default: Ec2InstanceType
+
+Resources:
+  # Security group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Limits security group ingress and egress traffic
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: !Ref AllowSsh
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      VpcId: !ImportValue Vpc
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, SecurityGroup ] ]
+
+  # Role
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: "s3:List*"
+          Resource: "*"
+      Roles:
+      - !Ref Role
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - !Ref Role
+
+  # EC2 instance
+  Ec2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties: 
+      BlockDeviceMappings: 
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: 8
+          VolumeType: gp2
+          DeleteOnTermination: true
+      ImageId: !Ref ImageId
+      InstanceType: !Ref Ec2InstanceType
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref InstanceProfile
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeleteOnTermination: true
+        DeviceIndex: "0"
+        SubnetId: !ImportValue PublicSubnet1a 
+        GroupSet:
+        - !Ref SecurityGroup
+      Tags: 
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, !Ref Ec2InstanceName] ]

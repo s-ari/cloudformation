@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Root stack
+
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: ""
+  ImageId:
+    Type: "String"
+    Default: ""
+  KeyName:
+    Type: "String"
+    Default: ""
+  AllowSsh:
+    Type: "String"
+    Default: ""
+  AllowHttp:
+    Type: "String"
+    Default: ""
+  Ec2InstanceName:
+    Type: "String"
+    Default: ""
+  Ec2InstanceType:
+    Type: "String"
+    Default: ""
+  AutoScaleInstanceType:
+    Type: "String"
+    Default: ""
+  ElastiCacheInstanceType:
+    Type: "String"
+    Default: ""
+  VpcCidrBlock:
+    Type: "String"
+    Default: ""
+  PublicSubnetCidrBlock1a:
+    Type: "String"
+    Default: ""
+  PublicSubnetCidrBlock1c:
+    Type: "String"
+    Default: ""
+  PrivateSubnetCidrBlock1a:
+    Type: "String"
+    Default: ""
+  PrivateSubnetCidrBlock1c:
+    Type: "String"
+    Default: ""
+  TemplateURL:
+    Type: "String"
+    Default: ""
+Mappings:
+  Resources:
+    Vpc:
+      Use: "true"
+    Ec2:
+      Use: "true"
+    Elb:
+      Use: "false"
+    AutoScale:
+      Use: "false"
+    ElastiCache:
+      Use: "false"
+Conditions:
+  CreateVpcResources: !Equals [!FindInMap [Resources, Vpc, Use], true]
+  CreateEc2Resources: !Equals [!FindInMap [Resources, Ec2, Use], true]
+  CreateElbResources: !Equals [!FindInMap [Resources, Elb, Use], true]
+  CreateAutoScaleResources: !Equals [!FindInMap [Resources, AutoScale, Use], true]
+  CreateElastiCacheResources: !Equals [!FindInMap [Resources, ElastiCache, Use], true]
+
+Resources:
+  Vpc:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateVpcResources
+    Properties:
+      TemplateURL: !Sub ${TemplateURL}/vpc.yml
+      Parameters:
+        Prefix: !Ref Prefix
+        VpcCidrBlock: !Ref VpcCidrBlock
+        PublicSubnetCidrBlock1a: !Ref PublicSubnetCidrBlock1a
+        PublicSubnetCidrBlock1c: !Ref PublicSubnetCidrBlock1c
+        PrivateSubnetCidrBlock1a: !Ref PrivateSubnetCidrBlock1a
+        PrivateSubnetCidrBlock1c: !Ref PrivateSubnetCidrBlock1c
+
+  Ec2:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateEc2Resources
+    DependsOn: Vpc
+    Properties:
+      TemplateURL: !Sub ${TemplateURL}/ec2.yml
+      Parameters:
+        Prefix: !Ref Prefix
+        ImageId: !Ref ImageId
+        KeyName: !Ref KeyName
+        AllowSsh: !Ref AllowSsh
+        Ec2InstanceName: !Ref Ec2InstanceName
+        Ec2InstanceType: !Ref Ec2InstanceType
+
+  Elb:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateElbResources
+    DependsOn: Vpc
+    Properties:
+      TemplateURL: !Sub ${TemplateURL}/elb.yml
+      Parameters:
+        Prefix: !Ref Prefix
+        AllowHttp: !Ref AllowHttp
+
+  AutoScale:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateAutoScaleResources
+    DependsOn: Vpc 
+    Properties:
+      TemplateURL: !Sub ${TemplateURL}/autoscale.yml
+      Parameters:
+        Prefix: !Ref Prefix
+        ImageId: !Ref ImageId
+        KeyName: !Ref KeyName
+        AllowSsh: !Ref AllowSsh
+        AllowHttp: !Ref AllowHttp
+        AutoScaleInstanceType: !Ref AutoScaleInstanceType
+
+  ElastiCache:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateElastiCacheResources
+    DependsOn: Vpc 
+    Properties:
+      TemplateURL: !Sub ${TemplateURL}/elasticache.yml
+      Parameters:
+        Prefix: !Ref Prefix
+        ElastiCacheInstanceType: !Ref ElastiCacheInstanceType
+        VpcCidrBlock: !Ref VpcCidrBlock

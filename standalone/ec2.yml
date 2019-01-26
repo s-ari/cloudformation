@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Create AWS resources EC2, VPC(MultiAZ)
+
+# Edit Prefix, ImageID, and KeyName parameters. 
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: "<Prefix>"
+  ImageId:
+    Type: "String"
+    Default: "<AMI_ID>"
+  KeyName:
+    Type: "String"
+    Default: "<KEY_PAIR_NAME>"
+  AllowSsh:
+    Type: "String"
+    Default: "0.0.0.0/0"
+  InstanceType:
+    Type: "String"
+    Default: "t2.micro"
+  VpcCidrBlock:
+    Type: "String"
+    Default: "172.172.0.0/16"
+  SubnetCidrBlock1a:
+    Type: "String"
+    Default: "172.172.1.0/24"
+  SubnetCidrBlock1c:
+    Type: "String"
+    Default: "172.172.2.0/24"
+
+Resources:
+  # VPC
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: VpcCidrBlock
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, VPC ] ]
+
+  # Subnet AZ1a
+  Subnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock:
+        Ref: SubnetCidrBlock1a
+      AvailabilityZone: 
+        Fn::Select:
+        - 0
+        - Fn::GetAZs:
+            Ref: "AWS::Region"
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, Subnet1a ] ]
+
+  # Subnet AZ1c
+  Subnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock:
+        Ref: SubnetCidrBlock1c
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs:
+            Ref: "AWS::Region"
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, Subnet1c ] ]
+
+  # Gateway
+  Gateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, Gateway ] ]
+
+  # Attach gateway
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: Vpc
+      InternetGatewayId:
+        Ref: Gateway
+
+  # Route table
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, RouteTable ] ]
+
+  # Route
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn: Gateway
+    Properties:
+      RouteTableId:
+        Ref: RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: Gateway
+
+  # Subnet AZ1a route table association
+  Subnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Subnet1a
+      RouteTableId:
+        Ref: RouteTable
+
+  # Subnet AZ1c route table association
+  Subnet1cRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Subnet1c
+      RouteTableId:
+        Ref: RouteTable
+
+  # Security group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Limits security group ingress and egress traffic
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp:
+          Ref: AllowSsh
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      VpcId:
+        Ref: Vpc
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, SecurityGroup ] ]
+
+  # Role
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: "s3:List*"
+          Resource: "*"
+      Roles:
+      - !Ref Role
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - !Ref Role
+
+  # EC2 instance
+  Ec2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties: 
+      BlockDeviceMappings: 
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: 8
+          VolumeType: gp2
+          DeleteOnTermination: true
+      ImageId:
+        Ref: ImageId
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeleteOnTermination: true
+        DeviceIndex: "0"
+        SubnetId:
+          Ref: Subnet1c
+        GroupSet:
+        - Ref: SecurityGroup
+      Tags: 
+      - Key: Name
+        Value:
+          Fn::Join: [ -, [ Ref: Prefix, Instance01] ]

@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  VPC, Public Subnet, Private Subnet, Routetable, Gateway
+
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: Prefix
+  VpcCidrBlock:
+    Type: "String"
+    Default: VpcCidrBlock
+  PublicSubnetCidrBlock1a:
+    Type: "String"
+    Default: PublicSubnetCidrBlock1a
+  PublicSubnetCidrBlock1c:
+    Type: "String"
+    Default: PublicSubnetCidrBlock1c
+  PrivateSubnetCidrBlock1a:
+    Type: "String"
+    Default: PrivateSubnetCidrBlock1a
+  PrivateSubnetCidrBlock1c:
+    Type: "String"
+    Default: PrivateSubnetCidrBlock1c
+
+Resources:
+  # VPC
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, VPC ] ] 
+
+  # Public Subnet AZ1a
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetCidrBlock1a
+      AvailabilityZone: 
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, PublicSubnet1a ] ]
+
+  # Public Subnet AZ1c
+  PublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetCidrBlock1c
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, PublicSubnet1c ] ]
+
+  # Private Subnet AZ1a
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetCidrBlock1a
+      AvailabilityZone: 
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, PrivateSubnet1a ] ]
+
+  # Private Subnet AZ1c
+  PrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetCidrBlock1c
+      AvailabilityZone: 
+        Fn::Select:
+        - 1 
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, PrivateSubnet1c ] ]
+
+  # Gateway
+  Gateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, Gateway ] ]
+
+  # Attach gateway
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref Gateway
+
+  # Route table
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, RouteTable ] ]
+
+  # Route
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn: Gateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Gateway
+
+  # Subnet AZ1a route table association
+  PublicSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1a
+      RouteTableId: !Ref RouteTable
+
+  # Subnet AZ1c route table association
+  PublicSubnet1cRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1c
+      RouteTableId: !Ref RouteTable
+
+Outputs:
+  Vpc:
+    Value: !Ref Vpc
+    Export:
+      Name: Vpc
+  PublicSubnet1a:
+    Value: !Ref PublicSubnet1a
+    Export:
+      Name: PublicSubnet1a
+  PublicSubnet1c:
+    Value: !Ref PublicSubnet1c
+    Export:
+      Name: PublicSubnet1c
+  PrivateSubnet1a:
+    Value: !Ref PrivateSubnet1a
+    Export:
+      Name: PrivateSubnet1a
+  PrivateSubnet1c:
+    Value: !Ref PrivateSubnet1c
+    Export:
+      Name: PrivateSubnet1c

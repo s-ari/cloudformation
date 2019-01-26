@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  ELB, Security Group
+
+Parameters:
+  Prefix:
+    Type: "String"
+    Default: Prefix
+  AllowHttp:
+    Type: "String"
+    Default: AllowHttp
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Limits security group ingress and egress traffic
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: !Ref AllowHttp
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      VpcId: !ImportValue Vpc
+      Tags:
+      - Key: Name
+        Value: !Join [ -, [ !Ref Prefix, ElbSecurityGroup ] ]
+
+  Elb:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      Subnets:
+        - !ImportValue PublicSubnet1a 
+        - !ImportValue PublicSubnet1c
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '80'
+        Protocol: HTTP
+      HealthCheck:
+        Target: HTTP:80/
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '30'
+        Timeout: '5'
